@@ -1,0 +1,112 @@
+[
+  {
+    "id": "cr_001",
+    "name": "Luna Beauty Lab",
+    "platform": "douyin",
+    "tags": [
+      "beauty",
+      "skincare",
+      "female",
+      "review"
+    ],
+    "followers": 820000,
+    "conversion_rate": 0.042,
+    "avg_cpm": 68.0,
+    "risk_flags": [
+      "beauty_claims"
+    ]
+  },
+  {
+    "id": "cr_002",
+    "name": "城市通勤研究所",
+    "platform": "xiaohongshu",
+    "tags": [
+      "lifestyle",
+      "fashion",
+      "commute",
+      "office"
+    ],
+    "followers": 310000,
+    "conversion_rate": 0.036,
+    "avg_cpm": 54.0,
+    "risk_flags": []
+  },
+  {
+    "id": "cr_003",
+    "name": "TechWay 老周",
+    "platform": "bilibili",
+    "tags": [
+      "tech",
+      "saas",
+      "ai",
+      "productivity"
+    ],
+    "followers": 460000,
+    "conversion_rate": 0.031,
+    "avg_cpm": 72.0,
+    "risk_flags": [
+      "technical_accuracy"
+    ]
+  },
+  {
+    "id": "cr_004",
+    "name": "低卡厨房 Mia",
+    "platform": "douyin",
+    "tags": [
+      "food",
+      "health",
+      "fitness",
+      "family"
+    ],
+    "followers": 1250000,
+    "conversion_rate": 0.047,
+    "avg_cpm": 81.0,
+    "risk_flags": [
+      "health_claims"
+    ]
+  },
+  {
+    "id": "cr_005",
+    "name": "新消费情报局",
+    "platform": "xiaohongshu",
+    "tags": [
+      "consumer",
+      "trend",
+      "review",
+      "lifestyle"
+    ],
+    "followers": 690000,
+    "conversion_rate": 0.029,
+    "avg_cpm": 63.0,
+    "risk_flags": []
+  },
+  {
+    "id": "cr_006",
+    "name": "阿Ken户外装备",
+    "platform": "douyin",
+    "tags": [
+      "outdoor",
+      "sports",
+      "travel",
+      "gear"
+    ],
+    "followers": 530000,
+    "conversion_rate": 0.033,
+    "avg_cpm": 59.0,
+    "risk_flags": [
+      "safety_claims"
+    ]
+  },
+  {
+    "id": "cr_3bda0bad",
+    "name": "哈哈",
+    "platform": "xiaohongshu",
+    "tags": [
+      "甜美，帅气"
+    ],
+    "followers": 1000000,
+    "conversion_rate": 0.03,
+    "avg_cpm": 60.0,
+    "risk_flags": []
+  }
+]
