@@ -178,7 +178,9 @@ class DecisionFeedbackResponse(BaseModel):
     updatedReport: DecisionReport
 
 
-router = APIRouter(prefix="/api/decision", tags=["decision-os"])
+from backend.enterprise import check_feature, FEATURES
+
+router = APIRouter(prefix="/api/decision", tags=["decision"])
 
 
 FOLLOWUP_TEMPLATES: dict[str, list[FollowUpQuestion]] = {
@@ -1022,6 +1024,12 @@ def _build_action_items(request: DecisionRequest, language: DecisionLanguage) ->
         ActionItem(day="Thursday", task="Design the smallest validation pilot with pass/fail gates.", owner="Execution owner", duration="Half day", priority="High"),
         ActionItem(day="Friday", task="Run the decision review and choose scale, revise, pause, or stop.", owner="Final decision owner", duration="1 hour", priority="Medium"),
     ]
+
+
+@router.get("/features")
+def get_features() -> dict:
+    """Return available enterprise features."""
+    return {"open_source": True, "enterprise": FEATURES}
 
 
 @router.post("/generate-followups", response_model=FollowUpSession)
