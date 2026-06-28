@@ -1,6 +1,6 @@
 {
-  "name": "ai-campaign-saas-frontend",
-  "version": "3.1.0",
+  "name": "decisionos-frontend",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev",

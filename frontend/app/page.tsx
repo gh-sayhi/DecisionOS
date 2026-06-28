@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { ActionList } from "@/components/ActionList";
 import { FollowUpStep } from "@/components/FollowUpStep";
 import { TopNav } from "@/components/top-nav";
+import { decisionTemplateExamples } from "@/lib/decision-templates";
 import type { DecisionPack, DecisionReport, DecisionRequest, FeedbackChange, FollowUpSession } from "@/lib/types";
 
 type Locale = "en" | "zh";
@@ -114,48 +115,6 @@ const packExamples: Record<DecisionPack, DecisionRequest> = {
   }
 };
 
-const decisionTemplateExamples: Record<string, DecisionRequest> = {
-  "product-expansion": {
-    title: "是否上线企业 AI 工作台新模块",
-    pack: "Product",
-    context: "企业客户希望把分散的项目输入快速转化为结构化决策，但本季度工程资源有限，销售团队也需要可演示的新能力。",
-    objective: "判断是否在本季度上线聚焦版 AI 工作台模块，并明确发布范围和验证指标。",
-    options: ["上线聚焦版 MVP", "等待完整集成后发布", "选择 2 个设计伙伴先试点"],
-    constraints: "8 周交付窗口，后端资源有限，必须控制首版范围。",
-    budget: 180000,
-    timeline: "8 周",
-    stakeholders: "产品、工程、销售、客户成功",
-    success_metrics: "激活率、周活团队数、首次生成报告时间、试点客户转化率",
-    known_risks: "范围过大可能影响质量，并延迟采用证据。"
-  },
-  "market-entry": {
-    title: "是否进入中型企业运营软件市场",
-    pack: "Startup",
-    context: "团队观察到中型企业运营负责人存在重复需求，但该市场已有成熟工作流厂商，进入切入点需要更清晰。",
-    objective: "判断是否先做垂直切入点，再支持下一轮融资叙事。",
-    options: ["选择垂直场景切入", "直接做横向平台", "先用服务方式验证需求"],
-    constraints: "距离下一轮融资叙事窗口还有 6 个月，团队需要尽快形成可验证牵引力。",
-    budget: 320000,
-    timeline: "12 周",
-    stakeholders: "创始团队、早期客户、投资人",
-    success_metrics: "合格线索、付费试点、实施周期、留存信号",
-    known_risks: "市场可能需要更多实施服务，超过团队当前承载能力。"
-  },
-  "capital-allocation": {
-    title: "是否投资新的战略资产",
-    pack: "Investment",
-    context: "该资产可能加强长期战略位置，但短期流动性、下行敞口和退出条件需要更明确。",
-    objective: "判断现在投入、分阶段投入，还是等待更好的进入条件。",
-    options: ["立即投资", "分阶段承诺", "等待更好进入条件"],
-    constraints: "需要满足流动性目标、董事会审批，并考虑宏观不确定性。",
-    budget: 500000,
-    timeline: "30 天",
-    stakeholders: "财务、战略、董事会、业务负责人",
-    success_metrics: "风险调整回报、战略杠杆、流动性影响、下行保护",
-    known_risks: "如果市场条件恶化，机会成本和退出风险可能上升。"
-  }
-};
-
 const text = {
   en: {
     navAction: "New Decision",
@@ -186,7 +145,8 @@ const text = {
     emptyTitle: "Report structure is ready",
     emptyBody: "Generate a decision, answer the follow-up questions, then DecisionOS will populate the executive summary, verdict, risk matrix, budget, timeline, and next actions.",
     errorPrefix: "Decision failed",
-    errorFallback: "check that the API service is running.",
+    errorFallback: "check that the API service is running on port 8001.",
+    errorHint: "If this keeps happening, start the backend at 127.0.0.1:8001 and retry. Also check that required fields are filled.",
     likelihood: "Likelihood",
     impact: "Impact",
     defaultSteps: [
@@ -248,7 +208,8 @@ const text = {
     emptyTitle: "报告结构已就绪",
     emptyBody: "点击生成并回答追问后，这里会填充执行摘要、决策结论、风险矩阵、预算、时间线和下一步动作。",
     errorPrefix: "决策生成失败",
-    errorFallback: "请确认 API 服务正在运行。",
+    errorFallback: "请确认 8001 后端 API 服务正在运行。",
+    errorHint: "如果仍然失败，请先确认后端地址 127.0.0.1:8001 可访问，并检查标题、背景、目标和选项是否已填写。",
     likelihood: "发生概率",
     impact: "影响程度",
     defaultSteps: [
@@ -297,6 +258,32 @@ const reportSectionKeys = [
 ] as const;
 
 const defaultLocaleVersion = "zh-default-2026-06-28";
+
+function getVerdictStrength(score: number, verdict: string, locale: Locale) {
+  const lowerVerdict = verdict.toLowerCase();
+  if (score >= 80 || lowerVerdict.includes("strong") || verdict.includes("强烈")) {
+    return {
+      label: locale === "zh" ? "强烈推进" : "Strong Go",
+      className: "strong"
+    };
+  }
+  if (score >= 65 || lowerVerdict.includes("pilot") || verdict.includes("试点")) {
+    return {
+      label: locale === "zh" ? "建议试点" : "Pilot First",
+      className: "pilot"
+    };
+  }
+  if (score >= 50 || lowerVerdict.includes("wait") || lowerVerdict.includes("pause") || verdict.includes("暂缓")) {
+    return {
+      label: locale === "zh" ? "暂缓观察" : "Wait / Revise",
+      className: "wait"
+    };
+  }
+  return {
+    label: locale === "zh" ? "不建议推进" : "No Go",
+    className: "stop"
+  };
+}
 
 async function getResponseError(response: Response) {
   try {
@@ -633,7 +620,12 @@ export default function Home() {
               <label>{copy.risksLabel}</label>
               <textarea value={form.known_risks} onChange={(event) => setForm({ ...form, known_risks: event.target.value })} />
             </div>
-            {error ? <div className="error">{error}</div> : null}
+            {error ? (
+              <div className="error">
+                <strong>{error}</strong>
+                <span>{copy.errorHint}</span>
+              </div>
+            ) : null}
             <button className="submit" type="submit" disabled={loading}>
               {loading ? <Loader2 size={16} /> : <Sparkles size={16} />}
               {loading ? copy.loading : copy.submit}
@@ -742,6 +734,7 @@ function ReportView({
   const changedSections = new Set(feedbackChanges.map((change) => change.section));
   const blockClass = (section: string) => (changedSections.has(section) ? "changed" : undefined);
   const reportText = formatReportText(report);
+  const verdictStrength = getVerdictStrength(report.scoring_summary.total_score, report.decision_verdict, locale);
 
   async function copyReportText() {
     await navigator.clipboard.writeText(reportText);
@@ -771,6 +764,7 @@ function ReportView({
         <p>{report.executive_summary}</p>
       </ReportBlock>
       <ReportBlock title={copy.reportSections.decision_verdict} className={blockClass("decision_verdict")}>
+        <span className={`verdict-strength ${verdictStrength.className}`}>{verdictStrength.label}</span>
         <div className="verdict">
           <CheckCircle2 size={18} />
           <strong>{report.decision_verdict}</strong>

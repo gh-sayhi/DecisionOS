@@ -54,7 +54,19 @@ DecisionOS 采用 **Open Core** 模式：
 
 ## 快速启动
 
-### 后端
+### 方式一：Docker（推荐）
+
+```bash
+git clone https://github.com/gh-sayhi/DecisionOS.git
+cd DecisionOS
+docker compose up
+```
+
+打开 http://localhost:3000
+
+### 方式二：本地运行
+
+#### 后端
 
 ```bash
 cd backend
@@ -62,7 +74,7 @@ pip install -r requirements.txt
 uvicorn main:app --port 8001
 ```
 
-### 前端
+#### 前端
 
 ```bash
 cd frontend
