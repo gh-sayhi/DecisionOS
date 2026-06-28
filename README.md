@@ -20,12 +20,6 @@
 
 ---
 
-## 截图
-
-![DecisionOS 首页](docs/screenshot.png)
-
----
-
 ## License & Pricing
 
 DecisionOS 采用 **Open Core** 模式：
