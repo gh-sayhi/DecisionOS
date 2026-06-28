@@ -213,11 +213,11 @@ const text = {
     likelihood: "发生概率",
     impact: "影响程度",
     defaultSteps: [
-      { label: "背景", focus: "等待决策背景", signal: "尚未生成报告", status: "就绪" },
-      { label: "目标", focus: "映射业务结果", signal: "定义目标状态", status: "就绪" },
-      { label: "选项", focus: "比较可行路径", signal: "添加备选方案", status: "就绪" },
-      { label: "风险", focus: "识别约束和风险敞口", signal: "预算、时间、相关方、未知项", status: "就绪" },
-      { label: "结论", focus: "把推理转成行动", signal: "生成报告", status: "就绪" }
+      { label: "背景", focus: "填写决策信息", signal: "填写标题、背景、目标和选项", status: "就绪" },
+      { label: "目标", focus: "明确决策目标", signal: "回答 AI 追问的问题", status: "就绪" },
+      { label: "选项", focus: "评估可行路径", signal: "AI 进行 Pack 评分", status: "就绪" },
+      { label: "风险", focus: "识别约束和风险", signal: "AI 分析风险矩阵", status: "就绪" },
+      { label: "结论", focus: "生成决策报告", signal: "输出行动清单", status: "就绪" }
     ],
     reportSections: {
       executive_summary: "执行摘要",
