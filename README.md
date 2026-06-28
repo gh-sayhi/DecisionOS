@@ -1,108 +1,59 @@
 # DecisionOS
 
-DecisionOS is an **AI Decision Operating System** for high-stakes business decisions. It helps teams frame the decision, compare options, reason through risk, and produce an executive-ready decision report.
+**AI Decision Operating System** — 面向重大业务决策的企业级 AI 顾问。
 
-The product is no longer positioned as a vertical content analysis tool. Historical vertical modules remain archived in the codebase for compatibility, but the primary user experience is now DecisionOS.
+梳理问题、推演取舍，输出可给管理层使用的结构化决策报告。
 
-## Core Positioning
+---
 
-- Product category: AI Decision Operating System
-- Primary use case: major decisions before committing budget, people, timing, or strategy
-- Main entry: `New Decision`
-- Main workspace: `Decision Inputs` + `AI Thinking / Reasoning Timeline` + `Decision Report`
-- Output style: enterprise AI advisor, not a generic content generator
+## 核心功能
 
-## Industry Packs
+| 功能 | 说明 |
+|---|---|
+| **追问机制** | 提交决策后 AI 追问 3-5 个关键问题，收集深度上下文后再生成报告 |
+| **Pack 差异化评分** | 7 个行业 Pack（Product/Startup/Marketing/Content/Hiring/Investment/Custom），各有独立评分模型 |
+| **案例对标** | 内置 26 个经典商业案例，AI 自动匹配相似案例佐证推荐 |
+| **行动清单** | 报告末尾输出具体可执行的"明天做什么" |
+| **用户反驳** | 对报告结论有异议可反馈，AI 重新评估局部更新 |
+| **导出** | 支持 PDF / Markdown / 一键复制 |
+| **中英文** | 一键切换 |
 
-DecisionOS supports these packs:
+---
 
-- Product
-- Startup
-- Marketing
-- Content
-- Hiring
-- Investment
-- Custom
+## 快速启动
 
-The Content pack can reuse older content-planning fields as one sample scenario, but it is not the main product.
-
-## Fixed Report Structure
-
-Every generated decision report uses the same executive structure:
-
-1. Executive Summary
-2. Decision Verdict
-3. Core Value
-4. Benchmark
-5. Risk Matrix
-6. Execution Plan
-7. Budget
-8. Timeline
-9. Next Actions
-
-## Backend Startup
+### 后端
 
 ```bash
-cd /Users/ruirui/Documents/Codex/2026-06-24/wo-xia/outputs/drama-launch-suite
-.venv/bin/python -m uvicorn backend.main:app --host 127.0.0.1 --port 8001
+cd backend
+pip install -r requirements.txt
+uvicorn main:app --port 8001
 ```
 
-Main API:
-
-```text
-POST http://127.0.0.1:8001/api/decision/generate
-```
-
-## Frontend Startup
+### 前端
 
 ```bash
-cd /Users/ruirui/Documents/Codex/2026-06-24/wo-xia/outputs/drama-launch-suite/frontend
-pnpm build
-pnpm start --hostname 127.0.0.1 --port 3000
+cd frontend
+pnpm install
+pnpm dev
 ```
 
-Open:
+打开 http://127.0.0.1:3000
 
-```text
-http://127.0.0.1:3000
-```
+---
 
-## Current Routes
+## 技术栈
 
-```text
-http://127.0.0.1:3000           New Decision workspace
-http://127.0.0.1:3000/projects  Decision Library
-http://127.0.0.1:3000/admin     Admin
-http://127.0.0.1:8001/docs      API docs
-```
+| 层 | 技术 |
+|---|---|
+| 前端 | Next.js 16 + TypeScript |
+| 后端 | Python FastAPI |
+| 评分引擎 | RICE / 自定义决策框架 |
+| 案例库 | 26 个商业案例，向量匹配 |
+| 导出 | ReportLab (PDF) |
 
-Legacy public entry routes redirect back to the DecisionOS workspace.
+---
 
-## Example Request
+## License
 
-```bash
-curl -X POST http://127.0.0.1:8001/api/decision/generate \
-  -H "Content-Type: application/json" \
-  -d '{
-    "title": "Launch AI decision workspace",
-    "pack": "Product",
-    "context": "Enterprise teams need a structured way to make high-stakes decisions from fragmented inputs.",
-    "objective": "Decide whether to launch the workspace this quarter.",
-    "options": ["Ship focused MVP", "Wait for integrations"],
-    "constraints": "Eight week window and limited engineering capacity.",
-    "budget": 180000,
-    "timeline": "8 weeks",
-    "stakeholders": "Product, engineering, sales",
-    "success_metrics": "Activation, retention, decision cycle time",
-    "known_risks": "Scope may expand too quickly."
-  }'
-```
-
-## Verification
-
-- `python3 -m compileall backend`
-- `pnpm build`
-- `GET /`
-- `GET /projects`
-- `GET /consumer` redirects to `/`
-- `POST /api/decision/generate`
+Private — © 2026 gh-sayhi. All rights reserved.
