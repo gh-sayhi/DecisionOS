@@ -1097,6 +1097,31 @@ button {
   font-weight: 800;
 }
 
+.verdict-strength {
+  width: fit-content;
+  border-radius: 999px;
+  padding: 5px 10px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.verdict-strength.strong {
+  background: #067647;
+}
+
+.verdict-strength.pilot {
+  background: #0f766e;
+}
+
+.verdict-strength.wait {
+  background: #b45309;
+}
+
+.verdict-strength.stop {
+  background: #b42318;
+}
+
 .scoring-summary {
   display: grid;
   gap: 12px;
@@ -2453,6 +2478,81 @@ button {
   line-height: 1.55;
 }
 
+.project-library-hero {
+  align-items: center;
+}
+
+.decision-library-workspace {
+  width: min(1180px, calc(100vw - 32px));
+  margin: 24px auto 36px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 18px;
+  align-items: start;
+}
+
+.decision-template-grid {
+  padding: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.decision-template-card {
+  min-height: 210px;
+  text-decoration: none;
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+
+.decision-template-card > div {
+  display: grid;
+  gap: 8px;
+}
+
+.decision-template-card p {
+  margin: 0;
+  color: #475467;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.decision-template-card small {
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.template-pack {
+  width: fit-content;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+  padding: 4px 9px;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.template-cta {
+  margin-top: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent-dark);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.decision-library-guide {
+  position: sticky;
+  top: 84px;
+}
+
+.library-steps {
+  padding: 16px;
+}
+
 .compact-actions {
   display: flex;
   flex-wrap: wrap;
@@ -2534,8 +2634,23 @@ button {
 }
 
 .error {
+  border: 1px solid rgba(180, 35, 24, 0.22);
+  border-radius: 8px;
+  background: #fff4f2;
   color: var(--danger);
+  padding: 10px 12px;
+  display: grid;
+  gap: 5px;
   font-size: 13px;
+  line-height: 1.45;
+}
+
+.error strong {
+  font-weight: 900;
+}
+
+.error span {
+  color: #7a271a;
 }
 
 @media (max-width: 940px) {
@@ -2543,9 +2658,14 @@ button {
   .consumer-grid,
   .growth-workspace,
   .project-workspace,
+  .decision-library-workspace,
   .decision-workspace,
   .decision-hero {
     grid-template-columns: 1fr;
+  }
+
+  .decision-library-guide {
+    position: static;
   }
 
   .project-index,
