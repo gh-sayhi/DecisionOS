@@ -1,0 +1,29 @@
+{
+  "version": "1.0.0",
+  "release_date": "2026-06-28",
+  "description": "Initial open source release",
+  "features": [
+    "Docker Compose one-click setup",
+    "7 industry Packs with differentiated scoring",
+    "Follow-up questioning mechanism",
+    "3 demo business cases",
+    "Report export (Markdown)",
+    "Bilingual (Chinese/English)",
+    "User rebuttal / feedback",
+    "Action checklist with priorities",
+    "API timeout protection (25s)"
+  ],
+  "enterprise": {
+    "version": "1.0.0-enterprise",
+    "extra_features": [
+      "LLM real scoring via Ollama",
+      "26 full business cases",
+      "Full 28-dimension scoring algorithm",
+      "Custom Packs",
+      "Private case library",
+      "Team collaboration / SSO",
+      "Enterprise integrations",
+      "Enhanced PDF export"
+    ]
+  }
+}
