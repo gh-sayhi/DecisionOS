@@ -210,6 +210,7 @@ const text = {
     errorPrefix: "决策生成失败",
     errorFallback: "请确认 8001 后端 API 服务正在运行。",
     errorHint: "如果仍然失败，请先确认后端地址 127.0.0.1:8001 可访问，并检查标题、背景、目标和选项是否已填写。",
+    errorTimeout: "请求超时，后端可能正在处理其他请求，请稍后重试。",
     likelihood: "发生概率",
     impact: "影响程度",
     defaultSteps: [
@@ -291,6 +292,19 @@ async function getResponseError(response: Response) {
     return typeof data?.detail === "string" ? data.detail : `Service returned ${response.status}`;
   } catch {
     return `Service returned ${response.status}`;
+  }
+}
+
+const API_TIMEOUT = 25000; // 25s
+
+async function fetchWithTimeout(url: string, options: RequestInit = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), API_TIMEOUT);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    return response;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -430,7 +444,7 @@ export default function Home() {
     setFeedbackChanges([]);
     setFeedbackText("");
     try {
-      const response = await fetch("/api/decision/generate-followups", {
+      const response = await fetchWithTimeout("/api/decision/generate-followups", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -444,7 +458,8 @@ export default function Home() {
       setFollowUpSession(await response.json());
     } catch (err) {
       const message = err instanceof Error ? err.message : "";
-      setError(`${copy.errorPrefix}: ${message || copy.errorFallback}`);
+      const isTimeout = err instanceof DOMException && err.name === "AbortError";
+      setError(`${copy.errorPrefix}: ${isTimeout ? copy.errorTimeout : (message || copy.errorFallback)}`);
     } finally {
       setLoading(false);
     }
@@ -460,7 +475,7 @@ export default function Home() {
         id: question.id,
         answer: followUpAnswers[question.id] ?? ""
       }));
-      const contextResponse = await fetch("/api/decision/submit-answers", {
+      const contextResponse = await fetchWithTimeout("/api/decision/submit-answers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ decisionId: followUpSession.decisionId, answers })
@@ -469,7 +484,7 @@ export default function Home() {
         throw new Error(await getResponseError(contextResponse));
       }
       const contextData = await contextResponse.json();
-      const reportResponse = await fetch("/api/decision/generate", {
+      const reportResponse = await fetchWithTimeout("/api/decision/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -488,7 +503,8 @@ export default function Home() {
       setFeedbackText("");
     } catch (err) {
       const message = err instanceof Error ? err.message : "";
-      setError(`${copy.errorPrefix}: ${message || copy.errorFallback}`);
+      const isTimeout = err instanceof DOMException && err.name === "AbortError";
+      setError(`${copy.errorPrefix}: ${isTimeout ? copy.errorTimeout : (message || copy.errorFallback)}`);
     } finally {
       setFollowUpLoading(false);
     }
@@ -500,7 +516,7 @@ export default function Home() {
     setFeedbackLoading(true);
     setError("");
     try {
-      const response = await fetch("/api/decision/feedback", {
+      const response = await fetchWithTimeout("/api/decision/feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ decisionId: report.report_id, feedback: feedbackText })
@@ -514,7 +530,8 @@ export default function Home() {
       setFeedbackText("");
     } catch (err) {
       const message = err instanceof Error ? err.message : "";
-      setError(`${copy.errorPrefix}: ${message || copy.errorFallback}`);
+      const isTimeout = err instanceof DOMException && err.name === "AbortError";
+      setError(`${copy.errorPrefix}: ${isTimeout ? copy.errorTimeout : (message || copy.errorFallback)}`);
     } finally {
       setFeedbackLoading(false);
     }
