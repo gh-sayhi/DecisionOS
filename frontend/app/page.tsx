@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, BrainCircuit, CheckCircle2, ClipboardList, Copy, Download, Loader2, Plus, ShieldAlert, Sparkles } from "lucide-react";
+import { ArrowRight, BrainCircuit, CheckCircle2, ClipboardList, Copy, Download, FileText, Loader2, Plus, ShieldAlert, Sparkles, UploadCloud } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { ActionList } from "@/components/ActionList";
@@ -10,6 +10,21 @@ import { decisionTemplateExamples } from "@/lib/decision-templates";
 import type { DecisionPack, DecisionReport, DecisionRequest, FeedbackChange, FollowUpSession } from "@/lib/types";
 
 type Locale = "en" | "zh";
+type InputMode = "manual" | "template" | "upload";
+
+type UploadParseResponse = {
+  parsed: DecisionRequest;
+  extracted_text: string;
+  confidence: number;
+  field_sources: Array<{
+    field: string;
+    label: string;
+    value: string;
+    source_excerpt: string;
+    confidence: number;
+  }>;
+  warnings: string[];
+};
 
 const packs: Array<{ name: DecisionPack; description: Record<Locale, string> }> = [
   { name: "Product", description: { en: "Roadmap, feature priority, launch scope", zh: "路线图、功能优先级、发布范围" } },
@@ -23,95 +38,95 @@ const packs: Array<{ name: DecisionPack; description: Record<Locale, string> }> 
 
 const packExamples: Record<DecisionPack, DecisionRequest> = {
   Product: {
-    title: "Launch an AI workspace module for enterprise users",
+    title: "是否上线企业 AI 决策工作台模块",
     pack: "Product",
-    context: "Enterprise users need a faster way to turn fragmented project inputs into decisions, but the team has limited engineering capacity this quarter.",
-    objective: "Decide whether to ship the first workspace module now or wait for deeper integrations.",
-    options: ["Ship a focused MVP", "Wait for full integrations", "Pilot with two design partners"],
-    constraints: "Eight-week delivery window, limited backend capacity, sales team needs demo material.",
+    context: "企业客户需要把分散的项目输入快速转化为可执行决策，但本季度工程资源有限，销售团队也需要更清晰的演示材料。",
+    objective: "判断是否现在发布第一版工作台模块，还是等待更深的系统集成。",
+    options: ["发布聚焦版 MVP", "等待完整集成", "先与两个设计伙伴试点"],
+    constraints: "8 周交付窗口，后端资源有限，必须支持销售演示和客户试用。",
     budget: 180000,
-    timeline: "8 weeks",
-    stakeholders: "Product, engineering, sales, customer success",
-    success_metrics: "Activation rate, weekly active teams, time-to-first-report, design partner conversion",
-    known_risks: "Shipping too broad may weaken product quality and delay adoption proof."
+    timeline: "8 周",
+    stakeholders: "产品、工程、销售、客户成功",
+    success_metrics: "激活率、周活跃团队数、首次生成报告耗时、设计伙伴转化率",
+    known_risks: "范围过大可能降低产品质量，并推迟采用证据的形成。"
   },
   Startup: {
-    title: "Enter the mid-market operations software category",
+    title: "是否进入中型企业运营软件市场",
     pack: "Startup",
-    context: "The team sees repeated demand from mid-market operators, but the category has entrenched workflow incumbents.",
-    objective: "Decide whether to build a vertical wedge before raising the next round.",
-    options: ["Vertical wedge", "Horizontal platform", "Services-led validation"],
-    constraints: "Six months runway before fundraising narrative must be clear.",
+    context: "团队在中型企业运营场景中看到重复需求，但该品类已有成熟工作流厂商，切入点和融资叙事仍需验证。",
+    objective: "判断是否先做垂直切入，再进入下一轮融资准备。",
+    options: ["垂直切入", "直接做横向平台", "服务式验证"],
+    constraints: "6 个月内必须形成清晰的融资叙事和付费验证。",
     budget: 320000,
-    timeline: "12 weeks",
-    stakeholders: "Founders, early customers, investors",
-    success_metrics: "Qualified pipeline, paid pilots, implementation time, retention signal",
-    known_risks: "The market may require more implementation support than the team can absorb."
+    timeline: "12 周",
+    stakeholders: "创始团队、早期客户、投资人",
+    success_metrics: "有效商机、付费试点、实施周期、留存信号",
+    known_risks: "市场可能需要比团队当前能力更多的实施和交付支持。"
   },
   Marketing: {
-    title: "Choose the next enterprise acquisition motion",
+    title: "选择下一季度企业获客动作",
     pack: "Marketing",
-    context: "Inbound volume is stable but enterprise conversion is uneven across segments and channels.",
-    objective: "Select the highest-leverage acquisition motion for the next planning cycle.",
-    options: ["Account-based campaign", "Partner webinar series", "Executive thought leadership"],
-    constraints: "Small team, limited media budget, need measurable pipeline within one quarter.",
+    context: "当前自然线索稳定，但企业客户转化在不同人群和渠道之间差异明显，预算需要更聚焦。",
+    objective: "选择下一个计划周期最有杠杆的获客动作。",
+    options: ["ABM 定向活动", "伙伴联合线上会", "高管内容影响力"],
+    constraints: "团队小、媒体预算有限，需要一个季度内看到可衡量管道。",
     budget: 120000,
-    timeline: "Quarter",
-    stakeholders: "Marketing, sales, revenue operations",
-    success_metrics: "Pipeline created, meeting rate, win rate, cost per opportunity",
-    known_risks: "Brand activity may not convert without sales follow-up discipline."
+    timeline: "一个季度",
+    stakeholders: "市场、销售、收入运营",
+    success_metrics: "新增管道、会议率、赢单率、单个商机成本",
+    known_risks: "如果没有销售跟进纪律，品牌活动可能难以转化为收入。"
   },
   Content: {
-    title: "Validate a serialized content initiative for a professional audience",
+    title: "是否试点专业内容栏目",
     pack: "Content",
-    context: "The team has a narrative concept, defined audience, estimated production budget, channel mix, release cadence, monetization model, talent roles, and a concise premise.",
-    objective: "Decide whether to fund a small pilot before scaling into a repeatable content program.",
-    options: ["Pilot three episodes", "Build a full season", "Pause and test audience demand first"],
-    constraints: "Lean production team, fixed launch window, brand safety requirements.",
+    context: "团队已经有内容主题、目标受众、预算估算、渠道组合、发布节奏和商业化假设，但还没有连续内容的真实留存数据。",
+    objective: "判断是否先投入小规模试点，再扩展为长期内容项目。",
+    options: ["试点 3 期", "直接做完整季", "先测试受众需求"],
+    constraints: "制作团队精简，发布时间固定，必须符合品牌安全要求。",
     budget: 90000,
-    timeline: "6 weeks",
-    stakeholders: "Content lead, growth lead, finance, brand owner",
-    success_metrics: "Audience retention, qualified subscribers, production cost per asset, sponsor interest",
-    known_risks: "Creative ambition may exceed production capacity and weaken release consistency."
+    timeline: "6 周",
+    stakeholders: "内容负责人、增长负责人、财务、品牌负责人",
+    success_metrics: "完读/完播率、合格订阅、单条内容成本、赞助兴趣",
+    known_risks: "创意目标可能超过制作能力，影响稳定发布。"
   },
   Hiring: {
-    title: "Decide whether to hire a senior platform lead",
+    title: "是否招聘高级平台负责人",
     pack: "Hiring",
-    context: "Engineering throughput is constrained by architecture decisions, but the company is also watching burn closely.",
-    objective: "Decide whether to hire full-time, contract, or redesign responsibilities internally.",
-    options: ["Hire senior lead", "Use fractional advisor", "Promote internal owner"],
-    constraints: "Budget sensitivity, urgent architecture work, limited interview bandwidth.",
+    context: "工程吞吐被架构决策拖慢，但公司也在控制现金消耗，需要判断招聘是否是当前最优解。",
+    objective: "决定是全职招聘、使用顾问，还是内部重新分工。",
+    options: ["招聘高级负责人", "使用兼职顾问", "提拔内部负责人"],
+    constraints: "预算敏感、架构问题紧急、面试带宽有限。",
     budget: 260000,
-    timeline: "10 weeks",
-    stakeholders: "CEO, CTO, engineering managers, finance",
-    success_metrics: "Architecture decision velocity, team throughput, retention risk reduction",
-    known_risks: "Hiring too senior may add cost before the operating model is ready."
+    timeline: "10 周",
+    stakeholders: "CEO、CTO、工程经理、财务",
+    success_metrics: "架构决策速度、团队吞吐、关键人员流失风险下降",
+    known_risks: "过早招聘过高职级可能在组织模型成熟前增加固定成本。"
   },
   Investment: {
-    title: "Allocate capital to a new strategic asset",
+    title: "是否投资新的战略资产",
     pack: "Investment",
-    context: "The asset could strengthen long-term positioning, but short-term liquidity and downside exposure need clearer boundaries.",
-    objective: "Decide whether to invest now, stage the investment, or wait.",
-    options: ["Invest now", "Stage commitment", "Wait for better entry conditions"],
-    constraints: "Liquidity target, board approval, uncertain macro conditions.",
+    context: "该资产可能增强长期位置，但短期流动性、下行敞口和进入时机需要更清晰边界。",
+    objective: "决定现在投资、分阶段投入，还是等待更好的进入条件。",
+    options: ["现在投资", "分阶段承诺", "等待更好时机"],
+    constraints: "流动性目标、董事会审批、宏观环境不确定。",
     budget: 500000,
-    timeline: "30 days",
-    stakeholders: "Finance, strategy, board, operating owner",
-    success_metrics: "Risk-adjusted return, strategic leverage, liquidity impact, downside protection",
-    known_risks: "Opportunity cost may be high if market conditions deteriorate."
+    timeline: "30 天",
+    stakeholders: "财务、战略、董事会、业务负责人",
+    success_metrics: "风险调整回报、战略杠杆、流动性影响、下行保护",
+    known_risks: "如果市场条件恶化，机会成本可能迅速升高。"
   },
   Custom: {
-    title: "Resolve a strategic operating decision",
+    title: "解决一个跨部门战略决策",
     pack: "Custom",
-    context: "A leadership team needs a structured recommendation before committing budget, people, and executive attention.",
-    objective: "Turn the open question into a clear verdict, operating plan, and next actions.",
-    options: ["Proceed", "Revise", "Pause"],
-    constraints: "Limited resources and incomplete evidence.",
+    context: "领导团队需要在投入预算、人力和管理注意力之前，获得结构化建议和可执行路径。",
+    objective: "把开放问题转化为明确结论、执行计划和下一步动作。",
+    options: ["推进", "修正后推进", "暂停"],
+    constraints: "资源有限，证据不完整，跨部门目标尚未完全一致。",
     budget: 100000,
-    timeline: "4 weeks",
-    stakeholders: "Executive owner, finance, operators, end users",
-    success_metrics: "Decision speed, quality of evidence, execution readiness, risk reduction",
-    known_risks: "The decision may be delayed if ownership is unclear."
+    timeline: "4 周",
+    stakeholders: "决策负责人、财务、业务团队、最终用户",
+    success_metrics: "决策速度、证据质量、执行准备度、风险降低",
+    known_risks: "如果负责人不清晰，决策可能继续被延迟。"
   }
 };
 
@@ -123,7 +138,27 @@ const text = {
     hero:
       "Enterprise AI advisor for high-stakes choices: frame the decision, reason through tradeoffs, and produce an executive-ready operating plan.",
     inputsTitle: "Decision Inputs",
-    inputsSubtitle: "Select a pack, define the business question, and provide enough evidence for a structured recommendation.",
+    inputsSubtitle: "Pick a Pack, define the problem, and provide enough evidence for a structured recommendation.",
+    inputModes: {
+      manual: "Manual Input",
+      template: "Start From Template",
+      upload: "Upload Existing Plan"
+    },
+    uploadTitle: "Upload an existing plan",
+    uploadBody: "Upload a script, campaign brief, product proposal, hiring plan, investment memo, or other existing business document. DecisionOS will convert it into structured decision inputs.",
+    uploadFormats: "Supports .txt, .md, .docx, and text-based .pdf",
+    uploadButton: "Parse into inputs",
+    uploadLoading: "Parsing document",
+    uploadParsed: "Parsed document",
+    uploadConfidence: "Confidence",
+    uploadApplyHint: "Review the extracted inputs below, then generate follow-up questions.",
+    uploadFieldSources: "Extraction preview",
+    uploadSource: "Source",
+    parserLabel: "💬 Describe your decision in one sentence",
+    parserPlaceholder: "e.g. I run a tea shop in Chengdu with 110k monthly revenue, thinking about a second location...",
+    parserButton: "Auto-fill",
+    parserLoading: "Analyzing...",
+    parserError: "Sentence parser unavailable (requires backend Ollama)",
     titleLabel: "Decision Title",
     titlePlaceholder: "What decision needs to be made?",
     packLabel: "Industry Pack",
@@ -147,6 +182,7 @@ const text = {
     errorPrefix: "Decision failed",
     errorFallback: "check that the API service is running on port 8001.",
     errorHint: "If this keeps happening, start the backend at 127.0.0.1:8001 and retry. Also check that required fields are filled.",
+    errorTimeout: "Request timed out. The backend may be busy; retry shortly.",
     likelihood: "Likelihood",
     impact: "Impact",
     defaultSteps: [
@@ -187,6 +223,26 @@ const text = {
     hero: "面向重大业务决策的企业级 AI 顾问：梳理问题、推演取舍，并输出可给管理层使用的决策报告。",
     inputsTitle: "决策输入",
     inputsSubtitle: "选择行业 Pack，定义业务问题，并提供足够证据，让系统形成结构化建议。",
+    inputModes: {
+      manual: "手动输入",
+      template: "模板开始",
+      upload: "上传已有方案"
+    },
+    uploadTitle: "上传已有方案",
+    uploadBody: "上传已经写好的剧本、活动方案、产品方案、招聘计划、投资材料或其他业务文档，DecisionOS 会将其转化为结构化决策输入。",
+    uploadFormats: "支持 .txt、.md、.docx 和带文本层的 .pdf",
+    uploadButton: "解析为决策输入",
+    uploadLoading: "解析文档中",
+    uploadParsed: "解析完成",
+    uploadConfidence: "置信度",
+    uploadApplyHint: "请检查下方自动回填内容，确认后继续生成追问。",
+    uploadFieldSources: "解析结果预览",
+    uploadSource: "来源片段",
+    parserLabel: "💬 用一句话描述你的决策",
+    parserPlaceholder: "例如：我在成都开了一家茶饮店月流水11万，想开第二家店...",
+    parserButton: "自动填写",
+    parserLoading: "分析中...",
+    parserError: "一句话解析暂不可用（后端需要 Ollama）",
     titleLabel: "决策标题",
     titlePlaceholder: "需要做什么决策？",
     packLabel: "行业 Pack",
@@ -372,6 +428,12 @@ export default function Home() {
   const [feedbackChanges, setFeedbackChanges] = useState<FeedbackChange[]>([]);
   const [error, setError] = useState("");
   const [locale, setLocale] = useState<Locale>("zh");
+  const [sentenceInput, setSentenceInput] = useState("");
+  const [parsing, setParsing] = useState(false);
+  const [inputMode, setInputMode] = useState<InputMode>("manual");
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadParsing, setUploadParsing] = useState(false);
+  const [uploadResult, setUploadResult] = useState<UploadParseResponse | null>(null);
 
   const selectedPack = useMemo(() => packs.find((pack) => pack.name === form.pack) ?? packs[0], [form.pack]);
   const copy = text[locale];
@@ -408,7 +470,95 @@ export default function Home() {
   }
 
   function applyPack(pack: DecisionPack) {
+    setInputMode("template");
     loadDecisionRequest(packExamples[pack]);
+  }
+
+  function readFileAsBase64(file: File) {
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result;
+        if (typeof result === "string") {
+          resolve(result.split(",", 2)[1] ?? result);
+        } else {
+          reject(new Error("Unable to read file"));
+        }
+      };
+      reader.onerror = () => reject(reader.error ?? new Error("Unable to read file"));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function handleUploadParse() {
+    if (!uploadFile) return;
+    setUploadParsing(true);
+    setError("");
+    setUploadResult(null);
+    try {
+      const contentBase64 = await readFileAsBase64(uploadFile);
+      const response = await fetchWithTimeout("/api/decision/parse-upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileName: uploadFile.name,
+          contentBase64,
+          language: locale
+        })
+      });
+      if (!response.ok) {
+        throw new Error(await getResponseError(response));
+      }
+      const data = await response.json() as UploadParseResponse;
+      loadDecisionRequest(data.parsed);
+      setUploadResult(data);
+      setInputMode("upload");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "";
+      const isTimeout = err instanceof DOMException && err.name === "AbortError";
+      setError(`${copy.errorPrefix}: ${isTimeout ? copy.errorTimeout : (message || copy.errorFallback)}`);
+    } finally {
+      setUploadParsing(false);
+    }
+  }
+
+  async function handleParse() {
+    if (!sentenceInput.trim()) return;
+    setParsing(true);
+    setError("");
+    try {
+      const res = await fetchWithTimeout("/api/decision/parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sentence: sentenceInput.trim() })
+      });
+      if (!res.ok) throw new Error(await getResponseError(res));
+      const data = await res.json();
+      if (data.error) {
+        setError(copy.parserError + ": " + data.error);
+        return;
+      }
+      const p = data.parsed;
+      const updated: DecisionRequest = {
+        title: p.title || "",
+        pack: p.pack || "Custom",
+        context: p.context || "",
+        objective: p.objective || "",
+        options: Array.isArray(p.options) && p.options.length > 0 ? p.options : ["Option 1"],
+        constraints: p.constraints || "",
+        budget: typeof p.budget === "number" ? p.budget : 0,
+        timeline: p.timeline || "",
+        stakeholders: p.stakeholders || "",
+        success_metrics: p.success_metrics || "",
+        known_risks: p.known_risks || "",
+      };
+      loadDecisionRequest(updated);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      setError(`${copy.parserError}: ${msg}`);
+    } finally {
+      setParsing(false);
+    }
   }
 
   function loadDecisionRequest(next: DecisionRequest) {
@@ -419,6 +569,7 @@ export default function Home() {
     setFollowUpAnswers({});
     setFeedbackChanges([]);
     setFeedbackText("");
+    setUploadResult(null);
     setError("");
   }
 
@@ -431,6 +582,9 @@ export default function Home() {
     setFollowUpAnswers({});
     setFeedbackChanges([]);
     setFeedbackText("");
+    setInputMode("manual");
+    setUploadFile(null);
+    setUploadResult(null);
     setError("");
   }
 
@@ -577,6 +731,65 @@ export default function Home() {
             <p className="panel-subtitle">{copy.inputsSubtitle}</p>
           </div>
 
+          <div className="input-mode-tabs">
+            {(["manual", "template", "upload"] as InputMode[]).map((mode) => (
+              <button className={inputMode === mode ? "active" : ""} key={mode} type="button" onClick={() => setInputMode(mode)}>
+                {mode === "upload" ? <UploadCloud size={15} /> : mode === "template" ? <ClipboardList size={15} /> : <FileText size={15} />}
+                {copy.inputModes[mode]}
+              </button>
+            ))}
+          </div>
+
+          {inputMode === "upload" ? (
+            <div className="upload-plan-panel">
+              <div>
+                <strong>{copy.uploadTitle}</strong>
+                <p>{copy.uploadBody}</p>
+                <span>{copy.uploadFormats}</span>
+              </div>
+              <label className="upload-dropzone">
+                <UploadCloud size={20} />
+                <input
+                  type="file"
+                  accept=".txt,.md,.markdown,.docx,.pdf,text/plain,text/markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  onChange={(event) => setUploadFile(event.target.files?.[0] ?? null)}
+                />
+                <b>{uploadFile?.name ?? copy.uploadTitle}</b>
+              </label>
+              <button className="secondary-button upload-parse-button" type="button" onClick={handleUploadParse} disabled={!uploadFile || uploadParsing}>
+                {uploadParsing ? <Loader2 size={15} /> : <Sparkles size={15} />}
+                {uploadParsing ? copy.uploadLoading : copy.uploadButton}
+              </button>
+              {uploadResult ? (
+                <div className="upload-result">
+                  <div>
+                    <strong>{copy.uploadParsed}</strong>
+                    <span>{copy.uploadConfidence}: {uploadResult.confidence}/100</span>
+                  </div>
+                  <p>{copy.uploadApplyHint}</p>
+                  {uploadResult.field_sources?.length ? (
+                    <div className="upload-field-sources">
+                      <strong>{copy.uploadFieldSources}</strong>
+                      {uploadResult.field_sources.map((field) => (
+                        <article key={field.field}>
+                          <div>
+                            <b>{field.label}</b>
+                            <span>{field.confidence}/100</span>
+                          </div>
+                          <p>{field.value}</p>
+                          <small>{copy.uploadSource}: {field.source_excerpt}</small>
+                        </article>
+                      ))}
+                    </div>
+                  ) : null}
+                  {uploadResult.warnings.map((warning) => (
+                    <small key={warning}>{warning}</small>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           <div className="pack-grid">
             {packs.map((pack) => (
               <button className={pack.name === form.pack ? "pack-card active" : "pack-card"} key={pack.name} type="button" onClick={() => applyPack(pack.name)}>
@@ -587,6 +800,26 @@ export default function Home() {
           </div>
 
           <form className="form" onSubmit={handleSubmit}>
+            <div className="parser-section">
+              <label className="parser-label">{copy.parserLabel}</label>
+              <div className="parser-row">
+                <textarea
+                  className="parser-input"
+                  value={sentenceInput}
+                  onChange={(e) => setSentenceInput(e.target.value)}
+                  placeholder={copy.parserPlaceholder}
+                  rows={2}
+                />
+                <button
+                  className="parser-button"
+                  type="button"
+                  onClick={handleParse}
+                  disabled={parsing || !sentenceInput.trim()}
+                >
+                  {parsing ? copy.parserLoading : copy.parserButton}
+                </button>
+              </div>
+            </div>
             <div className="field">
               <label>{copy.titleLabel}</label>
               <input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder={copy.titlePlaceholder} />

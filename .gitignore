@@ -10,3 +10,11 @@ dist/
 build/
 .DS_Store
 *.log
+frontend/tsconfig.tsbuildinfo
+backend/enterprise/*.bak
+output/
+backend/enterprise/decision_parser.py
+backend/enterprise/enhanced_scoring.py
+backend/enterprise/five_source_engine.py
+backend/enterprise/llm_scoring.py
+backend/data/decision_assets.json

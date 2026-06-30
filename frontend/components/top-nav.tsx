@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, BrainCircuit, Plus } from "lucide-react";
+import { Archive, BarChart3, BrainCircuit, FolderKanban, Plus } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
@@ -14,6 +14,8 @@ type TopNavProps = {
 
 const navItems = [
   { href: "/", label: { en: "New Decision", zh: "新建决策" }, icon: Plus },
+  { href: "/projects", label: { en: "Decision Library", zh: "决策库" }, icon: FolderKanban },
+  { href: "/assets", label: { en: "Decision Assets", zh: "资产库" }, icon: Archive },
   { href: "http://127.0.0.1:8001/docs", label: { en: "API", zh: "API" }, icon: BarChart3, external: true }
 ];
 

@@ -500,3 +500,30 @@ export type ProjectWorkspaceGroup = {
 export type ProjectWorkspaceResponse = {
   groups: ProjectWorkspaceGroup[];
 };
+
+
+export type DecisionReview = {
+  id: string;
+  created_at: string;
+  review_window: "7d" | "30d" | "90d";
+  actual_outcome: string;
+  metric_result: string;
+  budget_result: string;
+  risk_result: string;
+  next_decision: string;
+};
+
+export type DecisionAsset = {
+  id: string;
+  report_id: string;
+  title: string;
+  pack: DecisionPack;
+  created_at: string;
+  score: number;
+  verdict_strength: string;
+  review_status: string;
+  decision_verdict: string;
+  next_actions: string[];
+  report: DecisionReport;
+  reviews: DecisionReview[];
+};

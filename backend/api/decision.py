@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+import base64
+import binascii
 from datetime import datetime
+from html import unescape
+from io import BytesIO
+import json
 from hashlib import sha1
 import re
 from pathlib import Path
 from typing import Literal
+from zipfile import BadZipFile, ZipFile
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
@@ -38,6 +44,28 @@ class DecisionRequest(BaseModel):
     stakeholders: str = ""
     success_metrics: str = ""
     known_risks: str = ""
+
+
+class UploadedDecisionParseRequest(BaseModel):
+    fileName: str
+    contentBase64: str
+    language: DecisionLanguage = "zh"
+
+
+class ExtractedDecisionField(BaseModel):
+    field: str
+    label: str
+    value: str
+    source_excerpt: str
+    confidence: int
+
+
+class UploadedDecisionParseResponse(BaseModel):
+    parsed: DecisionRequest
+    extracted_text: str
+    confidence: int
+    field_sources: list[ExtractedDecisionField] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
 
 
 class FollowUpQuestion(BaseModel):
@@ -176,6 +204,45 @@ class DecisionReport(BaseModel):
 class DecisionFeedbackResponse(BaseModel):
     changes: list[FeedbackChange]
     updatedReport: DecisionReport
+
+
+class DecisionReviewRequest(BaseModel):
+    review_window: Literal["7d", "30d", "90d"]
+    actual_outcome: str = Field(min_length=2)
+    metric_result: str = ""
+    budget_result: str = ""
+    risk_result: str = ""
+    next_decision: str = ""
+
+
+class DecisionReview(BaseModel):
+    id: str
+    created_at: str
+    review_window: Literal["7d", "30d", "90d"]
+    actual_outcome: str
+    metric_result: str = ""
+    budget_result: str = ""
+    risk_result: str = ""
+    next_decision: str = ""
+
+
+class DecisionAsset(BaseModel):
+    id: str
+    report_id: str
+    title: str
+    pack: DecisionPack
+    created_at: str
+    score: int
+    verdict_strength: str
+    review_status: str
+    decision_verdict: str
+    next_actions: list[str]
+    report: DecisionReport
+    reviews: list[DecisionReview] = Field(default_factory=list)
+
+
+class DecisionAssetList(BaseModel):
+    assets: list[DecisionAsset]
 
 
 from backend.enterprise import check_feature, FEATURES
@@ -499,6 +566,219 @@ def _split_options(options: list[str]) -> list[str]:
     return clean or ["Proceed with a controlled pilot", "Pause and gather stronger evidence", "Redesign the option set"]
 
 
+def _decode_upload(req: UploadedDecisionParseRequest) -> tuple[bytes, str]:
+    try:
+        payload = req.contentBase64.split(",", 1)[-1]
+        return base64.b64decode(payload, validate=True), Path(req.fileName).suffix.lower()
+    except (binascii.Error, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid uploaded file content") from exc
+
+
+def _extract_docx_text(data: bytes) -> str:
+    try:
+        with ZipFile(BytesIO(data)) as archive:
+            names = [name for name in archive.namelist() if name.startswith("word/") and name.endswith(".xml")]
+            parts: list[str] = []
+            for name in names:
+                if name in {"word/document.xml"} or name.startswith("word/header") or name.startswith("word/footer"):
+                    xml = archive.read(name).decode("utf-8", errors="ignore")
+                    xml = re.sub(r"<w:tab[^>]*>", "\t", xml)
+                    xml = re.sub(r"</w:p>", "\n", xml)
+                    xml = re.sub(r"<[^>]+>", "", xml)
+                    parts.append(unescape(xml))
+            return "\n".join(parts)
+    except BadZipFile as exc:
+        raise HTTPException(status_code=400, detail="DOCX file could not be parsed") from exc
+
+
+def _extract_pdf_text(data: bytes) -> str:
+    decoded = data.decode("latin-1", errors="ignore")
+    chunks = re.findall(r"\(([^()]{2,})\)\s*Tj", decoded)
+    array_chunks = re.findall(r"\[(.*?)\]\s*TJ", decoded, flags=re.S)
+    for chunk in array_chunks:
+        chunks.extend(re.findall(r"\(([^()]{2,})\)", chunk))
+    text = "\n".join(item.encode("latin-1", errors="ignore").decode("utf-8", errors="ignore") for item in chunks)
+    return text if len(text.strip()) >= 40 else decoded[:6000]
+
+
+def _extract_upload_text(req: UploadedDecisionParseRequest) -> tuple[str, list[str]]:
+    data, suffix = _decode_upload(req)
+    warnings: list[str] = []
+    if len(data) > 8 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Uploaded file is too large. Keep it under 8MB.")
+
+    if suffix in {".txt", ".md", ".markdown"}:
+        text = data.decode("utf-8", errors="ignore")
+    elif suffix == ".docx":
+        text = _extract_docx_text(data)
+    elif suffix == ".pdf":
+        text = _extract_pdf_text(data)
+        warnings.append("PDF extraction depends on the document text layer. If the result is incomplete, paste the source text into the context field.")
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported file type. Use .txt, .md, .docx, or text-based .pdf.")
+
+    text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    if len(text) < 20:
+        raise HTTPException(status_code=400, detail="No readable text was extracted from the uploaded file.")
+    return text[:12000], warnings
+
+
+def _line_after_label(text: str, labels: list[str]) -> str:
+    for label in labels:
+        match = re.search(rf"{label}\s*[:：]\s*(.+)", text, flags=re.I)
+        if match:
+            return match.group(1).strip()
+    return ""
+
+
+def _source_excerpt(text: str, value: object, fallback: str = "") -> str:
+    raw = str(value or "").strip()
+    if raw:
+        index = text.find(raw)
+        if index >= 0:
+            start = max(0, index - 60)
+            end = min(len(text), index + len(raw) + 80)
+            return re.sub(r"\s+", " ", text[start:end]).strip()
+    return re.sub(r"\s+", " ", (fallback or text[:180])).strip()[:240]
+
+
+def _field_sources(parsed: DecisionRequest, text: str, language: DecisionLanguage) -> list[ExtractedDecisionField]:
+    labels = {
+        "title": "决策标题" if language == "zh" else "Decision Title",
+        "pack": "行业 Pack" if language == "zh" else "Industry Pack",
+        "objective": "决策目标" if language == "zh" else "Decision Objective",
+        "options": "待比较选项" if language == "zh" else "Options",
+        "budget": "预算" if language == "zh" else "Budget",
+        "timeline": "时间周期" if language == "zh" else "Timeline",
+        "stakeholders": "相关方" if language == "zh" else "Stakeholders",
+        "success_metrics": "成功指标" if language == "zh" else "Success Metrics",
+        "known_risks": "已知风险" if language == "zh" else "Known Risks",
+    }
+    values: dict[str, object] = {
+        "title": parsed.title,
+        "pack": parsed.pack,
+        "objective": parsed.objective,
+        "options": "；".join(parsed.options),
+        "budget": f"{parsed.budget:,.0f}" if parsed.budget else "",
+        "timeline": parsed.timeline,
+        "stakeholders": parsed.stakeholders,
+        "success_metrics": parsed.success_metrics,
+        "known_risks": parsed.known_risks,
+    }
+    required = {"title", "pack", "objective", "options"}
+    fields: list[ExtractedDecisionField] = []
+    for field, value in values.items():
+        string_value = str(value or "").strip()
+        if not string_value and field not in required:
+            continue
+        confidence = 88 if string_value and string_value in text else 72 if string_value else 35
+        if field == "pack":
+            confidence = 78 if parsed.pack != "Custom" else 45
+        if field == "options":
+            confidence = 82 if len(parsed.options) >= 2 else 48
+        fields.append(
+            ExtractedDecisionField(
+                field=field,
+                label=labels[field],
+                value=string_value or ("待补充" if language == "zh" else "To be filled"),
+                source_excerpt=_source_excerpt(text, string_value, parsed.context),
+                confidence=confidence,
+            )
+        )
+    return fields
+
+
+def _infer_pack(text: str) -> DecisionPack:
+    lowered = text.lower()
+    signals: list[tuple[DecisionPack, list[str]]] = [
+        ("Product", ["产品", "功能", "roadmap", "feature", "mvp", "用户体验", "上线"]),
+        ("Startup", ["创业", "融资", "商业模式", "门店", "市场进入", "startup", "founder", "runway"]),
+        ("Marketing", ["活动", "campaign", "投放", "获客", "营销", "传播", "渠道", "转化"]),
+        ("Content", ["剧本", "内容", "短视频", "栏目", "拍摄", "选题", "叙事", "脚本"]),
+        ("Hiring", ["招聘", "岗位", "候选人", "薪酬", "jd", "面试", "人才"]),
+        ("Investment", ["投资", "并购", "资产", "回报", "退出", "流动性", "估值"]),
+    ]
+    scores = [(pack, sum(1 for keyword in keywords if keyword in lowered)) for pack, keywords in signals]
+    pack, score = max(scores, key=lambda item: item[1])
+    return pack if score > 0 else "Custom"
+
+
+def _extract_budget(text: str) -> float:
+    match = re.search(r"(?:预算|费用|成本|投入|budget)[^\d]{0,8}(\d+(?:\.\d+)?)\s*(万|千|百万|m|k)?", text, flags=re.I)
+    if not match:
+        return 0
+    value = float(match.group(1))
+    unit = (match.group(2) or "").lower()
+    if unit == "万":
+        return value * 10000
+    if unit in {"百万", "m"}:
+        return value * 1000000
+    if unit in {"千", "k"}:
+        return value * 1000
+    return value
+
+
+def _extract_options(text: str, language: DecisionLanguage) -> list[str]:
+    options: list[str] = []
+    for pattern in [r"(?:选项|方案)\s*[A-Da-d1-4一二三四]?\s*[:：]\s*(.+)", r"^[A-Da-d]\s*[.、:：]\s*(.+)$"]:
+        options.extend(match.strip() for match in re.findall(pattern, text, flags=re.M))
+    clean = []
+    for option in options:
+        value = re.sub(r"\s+", " ", option).strip(" -；;")
+        if value and value not in clean:
+            clean.append(value[:80])
+    if clean:
+        return clean[:4]
+    return ["推进当前方案", "小范围试点", "暂缓并补充证据"] if language == "zh" else ["Proceed", "Run a pilot", "Pause and gather evidence"]
+
+
+def _parse_uploaded_decision(req: UploadedDecisionParseRequest) -> UploadedDecisionParseResponse:
+    text, warnings = _extract_upload_text(req)
+    pack = _infer_pack(text)
+    title = _line_after_label(text, ["标题", "项目名称", "方案名称", "剧名", "活动名称", "title"]) or Path(req.fileName).stem
+    objective = _line_after_label(text, ["目标", "决策目标", "业务目标", "objective", "goal"]) or (
+        "判断该已有方案是否值得推进，并明确验证门、风险和下一步动作。"
+        if req.language == "zh"
+        else "Decide whether this existing plan should proceed, with validation gates, risks, and next actions."
+    )
+    timeline = _line_after_label(text, ["周期", "时间", "时间线", "排期", "timeline", "schedule"])
+    stakeholders = _line_after_label(text, ["相关方", "团队", "负责人", "stakeholders", "owner"])
+    success_metrics = _line_after_label(text, ["成功指标", "验收标准", "KPI", "metrics"])
+    known_risks = _line_after_label(text, ["风险", "已知风险", "risk", "risks"])
+    constraints = _line_after_label(text, ["约束", "限制", "constraints"]) or known_risks
+    context = f"上传文件：{req.fileName}\n\n{text[:4000]}" if req.language == "zh" else f"Uploaded file: {req.fileName}\n\n{text[:4000]}"
+    confidence = 45
+    confidence += 10 if title else 0
+    confidence += 10 if objective else 0
+    confidence += 10 if success_metrics else 0
+    confidence += 10 if known_risks else 0
+    confidence += 10 if _extract_budget(text) > 0 else 0
+
+    parsed = DecisionRequest(
+        title=title[:120],
+        pack=pack,
+        language=req.language,
+        context=context,
+        objective=objective[:500],
+        options=_extract_options(text, req.language),
+        constraints=constraints[:500],
+        budget=_extract_budget(text),
+        timeline=timeline[:120],
+        stakeholders=stakeholders[:180],
+        success_metrics=success_metrics[:300],
+        known_risks=known_risks[:300],
+    )
+    if pack == "Content" and req.language == "zh":
+        warnings.append("系统已将剧本/内容材料作为 Content Pack 示例处理，不会把 DecisionOS 限定为单一行业工具。")
+    return UploadedDecisionParseResponse(
+        parsed=parsed,
+        extracted_text=text[:3000],
+        confidence=_bounded_score(confidence),
+        field_sources=_field_sources(parsed, text, req.language),
+        warnings=warnings,
+    )
+
+
 def _confidence(request: DecisionRequest) -> tuple[str, str]:
     evidence_score = sum(
         bool(value.strip())
@@ -608,9 +888,10 @@ def _score_dimension(key: str, request: DecisionRequest, options: list[str]) -> 
         "reversibility": ["reversible", "pause", "stop", "fallback", "option"],
         "execution_readiness": ["owner", "plan", "timeline", "resources", "stakeholders"],
     }
-    evidence = _score_evidence(request, options)
     # Open source: simplified keyword scoring. Enterprise version has full dimension-keyword mapping.
-    score = evidence + _keyword_score(combined, ["evidence", "data", "team", "market", "budget", "risk"])
+    score = evidence
+    score += _keyword_score(combined, dimension_keywords.get(key, []))
+    score += _keyword_score(combined, ["证据", "数据", "团队", "市场", "预算", "风险"], points=5)
 
     if key in {"effort", "budget_fit", "budget_efficiency", "funding"}:
         score += 10 if request.budget > 0 else -6
@@ -626,7 +907,45 @@ def _score_dimension(key: str, request: DecisionRequest, options: list[str]) -> 
     return final_score, reason
 
 
+try:
+    from backend.enterprise.enhanced_scoring import ENHANCED_DIMENSIONS, enhanced_scoring_summary
+    _HAS_ENHANCED = True
+except ImportError:
+    _HAS_ENHANCED = False
+
+try:
+    from backend.enterprise.decision_parser import parse_decision_sentence as _parse_sentence
+    _HAS_PARSER = True
+except ImportError:
+    _HAS_PARSER = False
+
+
 def _build_scoring_summary(request: DecisionRequest, options: list[str]) -> ScoringSummary:
+    """Build scoring summary - uses enhanced 6-dim scoring in enterprise mode."""
+    if _HAS_ENHANCED and check_feature("llm_scoring"):
+        dims, total = enhanced_scoring_summary(request, options)
+        model = PACK_SCORING_MODELS.get(request.pack, {})
+        if request.language == "zh":
+            recommendation = "建议推进并设置验证门" if total >= 75 else "建议小范围试点后再放大" if total >= 60 else "建议暂缓，先补充关键证据"
+        else:
+            recommendation = "Proceed with staged execution" if total >= 75 else "Run a constrained validation pilot" if total >= 60 else "Pause and gather stronger evidence"
+
+        # Also patch PACK_SCORING_MODELS to show correct dimensions
+        for pack_name, dims2 in ENHANCED_DIMENSIONS.items():
+            if pack_name in PACK_SCORING_MODELS:
+                PACK_SCORING_MODELS[pack_name]["dimensions"] = [(k, l, w) for k, l, w, _ in dims2]
+
+        return ScoringSummary(
+            pack=request.pack,
+            framework=str(model.get("framework", "Enhanced")),
+            prompt=str(model.get("prompt", "Enhanced decision scoring")),
+            extracted_signals=_extract_decision_signals(request, options),
+            dimensions=dims,
+            total_score=_bounded_score(total),
+            recommendation=recommendation,
+        )
+
+    # Original open-source scoring
     model = PACK_SCORING_MODELS[request.pack]
     dimensions: list[ScoringDimension] = []
     for key, label, weight in model["dimensions"]:  # type: ignore[index]
@@ -729,7 +1048,72 @@ def _match_reference_cases(request: DecisionRequest, options: list[str], limit: 
 
 def _remember_report(report: DecisionReport) -> DecisionReport:
     REPORT_STORE[report.report_id] = report
+    _save_decision_asset(report)
     return report
+
+
+
+
+DECISION_ASSET_DATA = Path(__file__).resolve().parents[1] / "data" / "decision_assets.json"
+
+
+def _verdict_strength(score: int, verdict: str) -> str:
+    if score >= 80 or "强烈" in verdict:
+        return "强烈推进"
+    if score >= 65 or "试点" in verdict:
+        return "建议试点"
+    if score >= 50 or "暂缓" in verdict:
+        return "暂缓观察"
+    return "不建议推进"
+
+
+def _load_decision_assets() -> list[DecisionAsset]:
+    if not DECISION_ASSET_DATA.exists():
+        return []
+    rows = json.loads(DECISION_ASSET_DATA.read_text(encoding="utf-8"))
+    return [DecisionAsset(**row) for row in rows]
+
+
+def _save_decision_assets(assets: list[DecisionAsset]) -> None:
+    DECISION_ASSET_DATA.parent.mkdir(parents=True, exist_ok=True)
+    DECISION_ASSET_DATA.write_text(
+        json.dumps([asset.model_dump() for asset in assets], ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _review_status(reviews: list[DecisionReview]) -> str:
+    windows = {review.review_window for review in reviews}
+    if {"7d", "30d", "90d"}.issubset(windows):
+        return "已完成 7/30/90 复盘"
+    if reviews:
+        return "复盘进行中"
+    return "待 7 天复盘"
+
+
+def _save_decision_asset(report: DecisionReport) -> None:
+    assets = _load_decision_assets()
+    existing = next((asset for asset in assets if asset.report_id == report.report_id), None)
+    reviews = existing.reviews if existing else []
+    asset = DecisionAsset(
+        id=existing.id if existing else f"asset_{sha1(report.report_id.encode('utf-8')).hexdigest()[:10]}",
+        report_id=report.report_id,
+        title=report.executive_summary[:42],
+        pack=report.pack,
+        created_at=existing.created_at if existing else report.created_at,
+        score=report.scoring_summary.total_score,
+        verdict_strength=_verdict_strength(report.scoring_summary.total_score, report.decision_verdict),
+        review_status=_review_status(reviews),
+        decision_verdict=report.decision_verdict,
+        next_actions=report.next_actions,
+        report=report,
+        reviews=reviews,
+    )
+    if existing:
+        assets = [asset if item.report_id == report.report_id else item for item in assets]
+    else:
+        assets.append(asset)
+    _save_decision_assets(sorted(assets, key=lambda item: item.created_at, reverse=True))
 
 
 def _safe_filename(value: str) -> str:
@@ -1009,7 +1393,28 @@ def _build_action_items(request: DecisionRequest, language: DecisionLanguage) ->
 @router.get("/features")
 def get_features() -> dict:
     """Return available enterprise features."""
-    return {"open_source": True, "enterprise": FEATURES}
+    return {"open_source": True, "enterprise": FEATURES, "has_parser": _HAS_PARSER}
+
+
+class ParseRequest(BaseModel):
+    sentence: str = Field(..., min_length=4, description="Natural language decision sentence")
+
+
+@router.post("/parse")
+def parse_decision(req: ParseRequest) -> dict:
+    """Parse a natural language sentence into structured decision fields."""
+    if not _HAS_PARSER:
+        return {"error": "Parser not available (enterprise feature)"}
+    result = _parse_sentence(req.sentence)
+    if result is None:
+        return {"error": "Failed to parse. Check if Ollama is running (llama3.2 required)."}
+    return {"parsed": result}
+
+
+@router.post("/parse-upload", response_model=UploadedDecisionParseResponse)
+def parse_uploaded_decision(request: UploadedDecisionParseRequest) -> UploadedDecisionParseResponse:
+    """Parse an uploaded plan/document into structured DecisionOS inputs."""
+    return _parse_uploaded_decision(request)
 
 
 @router.post("/generate-followups", response_model=FollowUpSession)
@@ -1241,6 +1646,42 @@ def update_decision_with_feedback(request: DecisionFeedbackRequest) -> DecisionF
     updated_report, changes = _apply_feedback(report, request.feedback)
     REPORT_STORE[request.decisionId] = updated_report
     return DecisionFeedbackResponse(changes=changes, updatedReport=updated_report)
+
+
+@router.get("/assets", response_model=DecisionAssetList)
+def list_decision_assets() -> DecisionAssetList:
+    assets = sorted(_load_decision_assets(), key=lambda item: item.created_at, reverse=True)
+    return DecisionAssetList(assets=assets)
+
+
+@router.get("/assets/{asset_id}", response_model=DecisionAsset)
+def get_decision_asset(asset_id: str) -> DecisionAsset:
+    asset = next((item for item in _load_decision_assets() if item.id == asset_id), None)
+    if asset is None:
+        raise HTTPException(status_code=404, detail="Decision asset not found.")
+    return asset
+
+
+@router.post("/assets/{asset_id}/review", response_model=DecisionAsset)
+def add_decision_review(asset_id: str, request: DecisionReviewRequest) -> DecisionAsset:
+    assets = _load_decision_assets()
+    updated_asset: DecisionAsset | None = None
+    for index, asset in enumerate(assets):
+        if asset.id == asset_id:
+            review = DecisionReview(
+                id=f"review_{sha1((asset_id + request.review_window + datetime.utcnow().isoformat()).encode('utf-8')).hexdigest()[:10]}",
+                created_at=datetime.utcnow().isoformat(),
+                **request.model_dump(),
+            )
+            asset.reviews.append(review)
+            asset.review_status = _review_status(asset.reviews)
+            assets[index] = asset
+            updated_asset = asset
+            break
+    if updated_asset is None:
+        raise HTTPException(status_code=404, detail="Decision asset not found.")
+    _save_decision_assets(assets)
+    return updated_asset
 
 
 @router.get("/{decision_id}/export")
